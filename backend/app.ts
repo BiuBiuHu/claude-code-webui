@@ -17,6 +17,12 @@ import { handleHistoriesRequest } from "./handlers/histories.ts";
 import { handleConversationRequest } from "./handlers/conversations.ts";
 import { handleChatRequest } from "./handlers/chat.ts";
 import { handleAbortRequest } from "./handlers/abort.ts";
+import {
+  handleGetConfig,
+  handleSaveConfig,
+  handleGetSystemConfig,
+  handleTestConfig,
+} from "./handlers/config.ts";
 import { logger } from "./utils/logger.ts";
 import { readBinaryFile } from "./utils/fs.ts";
 
@@ -71,6 +77,12 @@ export function createApp(
   );
 
   app.post("/api/chat", (c) => handleChatRequest(c, requestAbortControllers));
+
+  // Configuration endpoints
+  app.get("/api/config", (c) => handleGetConfig(c));
+  app.post("/api/config", (c) => handleSaveConfig(c));
+  app.get("/api/config/system", (c) => handleGetSystemConfig(c));
+  app.post("/api/config/test", (c) => handleTestConfig(c));
 
   // Static file serving with SPA fallback
   // Serve static assets (CSS, JS, images, etc.)

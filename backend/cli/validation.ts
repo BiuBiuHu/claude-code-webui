@@ -12,6 +12,7 @@ import {
   writeTextFile,
   exists,
   withTempDir,
+  realpath,
 } from "../utils/fs.ts";
 import { getPlatform, getEnv, exit } from "../utils/os.ts";
 
@@ -316,11 +317,17 @@ export async function validateClaudeCli(
     const detection = await detectClaudeCliPath(runtime, claudePath);
 
     if (detection.scriptPath) {
+      // Resolve any symbolic links to get the real absolute path
+      // This is important when the CLI will be executed from different working directories
+      const realPath = await realpath(detection.scriptPath);
       logger.cli.info(`✅ Claude CLI script detected: ${detection.scriptPath}`);
+      if (realPath !== detection.scriptPath) {
+        logger.cli.debug(`✅ Resolved to real path: ${realPath}`);
+      }
       if (detection.versionOutput) {
         logger.cli.info(`✅ Claude CLI found: ${detection.versionOutput}`);
       }
-      return detection.scriptPath;
+      return realPath;
     } else {
       // Show warning but continue with fallback when detection fails
       logger.cli.warn("⚠️  Claude CLI script path detection failed");
@@ -333,7 +340,8 @@ export async function validateClaudeCli(
       if (detection.versionOutput) {
         logger.cli.info(`✅ Claude CLI found: ${detection.versionOutput}`);
       }
-      return claudePath;
+      // Also resolve the fallback path
+      return await realpath(claudePath);
     }
   } catch (error) {
     logger.cli.error("❌ Failed to validate Claude CLI");

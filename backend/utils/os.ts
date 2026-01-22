@@ -60,3 +60,23 @@ export function getHomeDir(): string | undefined {
 export function exit(code: number): never {
   process.exit(code);
 }
+
+/**
+ * Expand ~ to home directory path
+ * @param path - Path that may start with ~
+ * @returns Expanded path with ~ replaced by home directory
+ */
+export function expandHomeDir(path: string): string {
+  const homeDir = getHomeDir();
+  if (!homeDir) {
+    return path;
+  }
+  // Replace ~ at the start with home directory
+  if (path === "~") {
+    return homeDir;
+  }
+  if (path.startsWith("~/")) {
+    return homeDir + path.slice(1);
+  }
+  return path;
+}

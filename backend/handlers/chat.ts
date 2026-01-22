@@ -2,6 +2,8 @@ import { Context } from "hono";
 import { query, type PermissionMode } from "@anthropic-ai/claude-code";
 import type { ChatRequest, StreamResponse } from "../../shared/types.ts";
 import { logger } from "../utils/logger.ts";
+import { expandHomeDir } from "../utils/os.ts";
+import process from "node:process";
 
 /**
  * Executes a Claude command and yields streaming responses
@@ -43,7 +45,7 @@ async function* executeClaudeCommand(
       prompt: processedMessage,
       options: {
         abortController,
-        executable: "node" as const,
+        executable: process.execPath,
         executableArgs: [],
         pathToClaudeCodeExecutable: cliPath,
         ...(sessionId ? { resume: sessionId } : {}),
@@ -101,6 +103,11 @@ export async function handleChatRequest(
     chatRequest as unknown as Record<string, unknown>,
   );
 
+  // Expand ~ in working directory path
+  const expandedWorkingDir = chatRequest.workingDirectory
+    ? expandHomeDir(chatRequest.workingDirectory)
+    : undefined;
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
@@ -111,7 +118,7 @@ export async function handleChatRequest(
           cliPath, // Use detected CLI path from validateClaudeCli
           chatRequest.sessionId,
           chatRequest.allowedTools,
-          chatRequest.workingDirectory,
+          expandedWorkingDir,
           chatRequest.permissionMode,
         )) {
           const data = JSON.stringify(chunk) + "\n";

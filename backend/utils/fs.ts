@@ -118,3 +118,16 @@ export async function withTempDir<T>(
     }
   }
 }
+
+/**
+ * Resolve symbolic links to get the real absolute path
+ * This is important for paths that will be used in different working directories
+ */
+export async function realpath(path: string): Promise<string> {
+  try {
+    return await fs.realpath(path);
+  } catch {
+    // If realpath fails, return the original path
+    return path;
+  }
+}

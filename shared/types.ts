@@ -51,3 +51,42 @@ export interface ConversationHistory {
     messageCount: number;
   };
 }
+
+// API Configuration types
+export interface ApiConfig {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}
+
+export interface UserConfigResponse {
+  useSystemDefaults: boolean;
+  apiKey?: string; // Masked for security (e.g., "sk-...xyz")
+  baseUrl?: string;
+  model?: string;
+}
+
+export interface SystemConfigResponse {
+  hasSystemConfig: boolean;
+  baseUrl?: string;
+  model?: string;
+  // Note: API key is never sent to frontend
+}
+
+export interface ConfigTestRequest {
+  apiKey: string;
+  baseUrl?: string;
+  model?: string;
+}
+
+export interface ConfigTestResponse {
+  success: boolean;
+  error?: string;
+}
+
+export interface SaveConfigRequest {
+  useSystemDefaults: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}
