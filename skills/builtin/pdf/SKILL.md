@@ -8,7 +8,13 @@ license: Proprietary. LICENSE.txt has complete terms
 
 ## ⚠️ CRITICAL: CJK (Chinese/Japanese/Korean) Text Support
 
-**If the PDF content contains Chinese, Japanese, Korean, or other non-Latin characters, you MUST use the provided scripts:**
+**FORBIDDEN: When creating PDFs with Chinese, Japanese, Korean, or any non-Latin characters, you are STRICTLY PROHIBITED from:**
+
+- ❌ Using `from reportlab import ...` - FORBIDDEN!
+- ❌ Using `fontName='Helvetica'` or `fontName='Times'` - FORBIDDEN!
+- ❌ Using `SimpleDocTemplate`, `Canvas`, or any ReportLab classes directly - FORBIDDEN!
+
+**MANDATORY: You MUST use the provided scripts instead:**
 
 1. **Creating new PDFs with CJK text**: Use `create_pdf_with_chinese.py`
 
@@ -21,7 +27,7 @@ license: Proprietary. LICENSE.txt has complete terms
    python scripts/fill_pdf_form_with_annotations.py input.pdf fields.json output.pdf
    ```
 
-**DO NOT** use ReportLab directly with Helvetica/Times fonts - they will cause garbled CJK text!
+**CONSEQUENCES:** Using ReportLab with default fonts will result in garbled/missing CJK characters (appearing as black boxes or question marks). ALWAYS use the provided scripts for CJK content!
 
 ## Overview
 
@@ -144,7 +150,17 @@ if all_tables:
 
 ### reportlab - Create PDFs
 
-#### Basic PDF Creation
+---
+
+⚠️️ **CRITICAL WARNING**: The ReportLab examples below are ONLY for **ENGLISH-ONLY** content.
+
+**DO NOT use these examples for Chinese/Japanese/Korean content!**
+
+For CJK content, you MUST use `create_pdf_with_chinese.py` script as shown in the CJK section above.
+
+---
+
+#### Basic PDF Creation (English content ONLY - NOT for CJK!)
 
 ```python
 from reportlab.lib.pagesizes import letter

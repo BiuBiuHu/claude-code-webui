@@ -26,7 +26,7 @@ const UPLOAD_FILE_PATTERN = new RegExp(
  */
 async function collectEnabledSkillsContent(
   projectId?: string,
-): Promise<string> {
+): Promise<{ content: string; count: number }> {
   try {
     const store = getSkillsStore();
 
@@ -44,7 +44,7 @@ async function collectEnabledSkillsContent(
     );
 
     if (allSkills.length === 0) {
-      return "";
+      return { content: "", count: 0 };
     }
 
     // Read SKILL.md content for each enabled skill
@@ -79,22 +79,30 @@ async function collectEnabledSkillsContent(
     }
 
     if (skillContents.length === 0) {
-      return "";
+      return { content: "", count: 0 };
     }
 
     // Combine all skill contents into a single block
-    return `
-# Available Skills
+    const content = `
+# MANDATORY INSTRUCTIONS - MUST FOLLOW
 
-You have access to the following skills. Follow their instructions when relevant:
+The following skill instructions contain CRITICAL rules that you MUST strictly follow.
+These are NOT optional guidelines - they are MANDATORY requirements.
+
+YOU MUST:
+- Read and understand ALL skill instructions before responding
+- Follow the specific methods and commands specified in each skill
+- NEVER use alternative approaches when a skill provides a specific solution
+- Pay special attention to warnings and critical notes (marked with ⚠️)
 
 ${skillContents.join("\n\n---\n\n")}
 `;
+    return { content, count: skillContents.length };
   } catch (error) {
     logger.chat.error("Failed to collect enabled skills content: {error}", {
       error,
     });
-    return "";
+    return { content: "", count: 0 };
   }
 }
 
@@ -197,10 +205,38 @@ async function* executeClaudeCommand(
       processedMessage = message.substring(1);
     }
 
-    // Inject skills content as system prompt if provided
-    const finalPrompt = skillsContent
-      ? `${skillsContent}\n\n---\n\nUser message:\n${processedMessage}`
-      : processedMessage;
+    // Detect if user is asking for Chinese/Japanese/Korean PDF creation
+    // If so, prepend a CRITICAL warning directly to the user message
+    const hasCJK =
+      /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(
+        processedMessage,
+      );
+    const isPDFRequest = /pdf|PDF|文档|文件/.test(processedMessage);
+
+    logger.chat.debug(
+      "CJK detection: hasCJK={hasCJK}, isPDFRequest={isPDFRequest}",
+      {
+        hasCJK,
+        isPDFRequest,
+      },
+    );
+
+    let finalPrompt = processedMessage;
+    if (hasCJK && isPDFRequest) {
+      logger.chat.info("CRITICAL: Injecting CJK PDF warning into user message");
+      finalPrompt = `CRITICAL WARNING - YOU MUST FOLLOW THESE INSTRUCTIONS:
+
+Creating PDFs with Chinese/Japanese/Korean characters? You are STRICTLY FORBIDDEN from using:
+- from reportlab import ...  (FORBIDDEN!)
+- fontName='Helvetica' or 'Times'  (FORBIDDEN!)
+- SimpleDocTemplate, Canvas, or ReportLab classes directly  (FORBIDDEN!)
+
+You MUST use: python scripts/create_pdf_with_chinese.py output.pdf "title:中文标题" "normal:中文内容"
+
+---
+
+${processedMessage}`;
+    }
 
     // Create and store AbortController for this request
     abortController = new AbortController();
@@ -220,6 +256,7 @@ async function* executeClaudeCommand(
         ...(additionalDirectories && additionalDirectories.length > 0
           ? { additionalDirectories }
           : {}),
+        ...(skillsContent ? { appendSystemPrompt: skillsContent } : {}),
       },
     })) {
       // Debug logging of raw SDK messages with detailed content
@@ -311,11 +348,12 @@ export async function handleChatRequest(
 
   // Collect enabled skills content to inject as system prompt
   // For now, we only use app-level skills. Project-level skills could be added later.
-  const skillsContent = await collectEnabledSkillsContent(undefined);
+  const { content: skillsContent, count: skillsCount } =
+    await collectEnabledSkillsContent(undefined);
 
   if (skillsContent) {
     logger.chat.info("Injected {count} skills into context", {
-      count: skillsContent.length,
+      count: skillsCount,
     });
   }
 
