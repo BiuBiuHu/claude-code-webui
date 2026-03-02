@@ -20,6 +20,7 @@ import {
   isEditToolUseResult,
   isBashToolUseResult,
 } from "../utils/contentUtils";
+import { FileDownloadButton } from "./chat/FileDownloadButton";
 
 // ANSI escape sequence regex for cleaning hooks messages
 const ANSI_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -69,6 +70,8 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
       <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
         {message.content}
       </pre>
+      {/* Show file download buttons for assistant messages */}
+      {!isUser && <FileDownloadButton content={message.content} />}
     </MessageContainer>
   );
 }

@@ -430,7 +430,9 @@ export async function handleRegisterFile(c: Context): Promise<Response> {
 
     // Validate the file exists
     const { exists } = await import("../utils/fs.ts");
-    if (!(await exists(resolvedPath))) {
+    const fileExists = await exists(resolvedPath);
+
+    if (!fileExists) {
       const response: UploadResponse = {
         success: false,
         error: "File does not exist",
@@ -501,10 +503,22 @@ export async function handleDownloadFile(c: Context): Promise<Response> {
   const file = fileRegistry.get(fileId);
 
   if (!file) {
-    return c.json({ error: "File not found" }, 404);
+    logger.api.error("File not found in registry: {fileId}", { fileId });
+    logger.api.debug("Current registry keys: {keys}", {
+      keys: Array.from(fileRegistry.keys()),
+    });
+    return c.json(
+      {
+        error:
+          "File not found in registry. Please try uploading the file again.",
+      },
+      404,
+    );
   }
 
   try {
+    logger.api.info("Downloading file: {path}", { path: file.path });
+
     const { readFile } = await import("node:fs/promises");
     const fileContent = await readFile(file.path);
 
@@ -514,10 +528,16 @@ export async function handleDownloadFile(c: Context): Promise<Response> {
     // Return file as downloadable attachment
     // Convert Buffer to Uint8Array for Response compatibility
     const uint8Array = new Uint8Array(fileContent);
+
+    // Encode filename for Content-Disposition (RFC 5987)
+    // Use UTF-8 encoding for Chinese characters
+    const encodedFilename = encodeURIComponent(file.name);
+    const contentDisposition = `attachment; filename*=UTF-8''${encodedFilename}`;
+
     return new Response(uint8Array, {
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `attachment; filename="${file.name}"`,
+        "Content-Disposition": contentDisposition,
         "Content-Length": uint8Array.byteLength.toString(),
       },
     });

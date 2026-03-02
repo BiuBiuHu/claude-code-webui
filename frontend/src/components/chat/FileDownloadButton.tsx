@@ -21,14 +21,21 @@ interface FileDownloadButtonProps {
 // Regular expressions to detect file paths and file creation messages
 const FILE_PATTERNS = [
   // Created/saved file paths - matches "created xxx.pdf", "saved to ./xxx.pdf", etc.
-  /(?:created?|saved?|wrote?|generated?|output(?:ted)?|wrote)\s+(?:to\s+)?["`']?(.*?\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))["`'?]/gi,
-  // File paths in quotes or backticks
-  /["'`]([^"'\`]+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))["'`]/g,
-  // Relative paths like ./xxx.pdf or ../xxx.pdf
+  // Support Unicode characters in filenames (including Chinese)
+  /(?:created?|saved?|wrote?|generated?|output(?:ted)?|wrote)\s+(?:to\s+)?["`']?([^\s"'\`]+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))["`'?]/gi,
+  // File paths in quotes or backticks (with Unicode support)
+  /["'`]([^\s"'`]+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))["'`]/g,
+  // Relative paths like ./xxx.pdf or ../xxx.pdf (with Unicode support)
   /(?:[\s(])(\.\.?\/*[^\s\])"']+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))/g,
-  // Absolute paths
+  // Absolute paths (with Unicode support)
   /(?:[\s(])(\/[^\s\])"']+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))/g,
+  // Match "文件名：xxx.pdf" or "文件: xxx.pdf" format (with Unicode support)
+  /(?:文件名|file|document)[:\s]+["`']([^\s"'`]+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))["`']/gi,
 ];
+
+// Pattern to detect directory location like "位置：`/path/to/dir/`" or "位置：/path/to/dir/"
+const DIR_PATTERN =
+  /(?:位置|location|dir(?:ectory)?)[:：\s]*["`']?([^"'`\s]*?)[`'"]?\s*(?:$|\n)/m;
 
 // Common upload directory pattern
 const UPLOAD_DIR_PATTERN = /\/claude-webui-uploads\//;
@@ -44,13 +51,22 @@ export function FileDownloadButton({ content }: FileDownloadButtonProps) {
     const detected: DetectedFile[] = [];
     const seen = new Set<string>();
 
+    // First, extract directory location if present
+    let dirPath = "";
+    const dirMatch = text.match(DIR_PATTERN);
+    if (dirMatch && dirMatch[1]) {
+      dirPath = dirMatch[1].replace(/`|"'/g, "").trim();
+      // Remove trailing slash if present
+      dirPath = dirPath.replace(/\/$/, "");
+    }
+
     for (const pattern of FILE_PATTERNS) {
       let match;
       // Reset regex state
       pattern.lastIndex = 0;
       while ((match = pattern.exec(text)) !== null) {
-        const filePath = match[1] || match[0];
-        const trimmedPath = filePath.trim();
+        let filePath = match[1] || match[0];
+        const trimmedPath = filePath.trim().replace(/^[`'"]|[`'"]$/g, ""); // Remove quotes
 
         if (trimmedPath && !seen.has(trimmedPath)) {
           seen.add(trimmedPath);
@@ -58,8 +74,14 @@ export function FileDownloadButton({ content }: FileDownloadButtonProps) {
           // Extract filename from path
           const name = trimmedPath.substring(trimmedPath.lastIndexOf("/") + 1);
 
+          // If path is relative and we have a directory, combine them
+          let fullPath = trimmedPath;
+          if (dirPath && !trimmedPath.startsWith("/")) {
+            fullPath = `${dirPath}/${trimmedPath}`;
+          }
+
           detected.push({
-            path: trimmedPath,
+            path: fullPath,
             name,
           });
         }
@@ -96,15 +118,8 @@ function FileChip({ file }: FileChipProps) {
     setError(null);
 
     try {
-      if (isUploadFile) {
-        // File is in upload directory, try to download directly via backend
-        // First, we need to register the file if it was created by Claude
-        await registerAndDownload();
-      } else {
-        // File is in working directory or elsewhere
-        // We need to register it first, then download
-        await registerAndDownload();
-      }
+      // Register file and download
+      await registerAndDownload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Download failed");
       setDownloading(false);
@@ -113,14 +128,16 @@ function FileChip({ file }: FileChipProps) {
 
   async function registerAndDownload() {
     try {
+      const requestData = {
+        path: file.path,
+        name: file.name,
+      };
+
       // Register the file and get a download URL
       const response = await fetch(getApiUrl("/api/files/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: file.path,
-          name: file.name,
-        }),
+        body: JSON.stringify(requestData),
       });
 
       if (!response.ok) {
@@ -136,15 +153,29 @@ function FileChip({ file }: FileChipProps) {
 
       // Now download the file
       const downloadUrl = getApiUrl(`/api/files/${fileId}/download`);
+      const downloadResponse = await fetch(downloadUrl);
+
+      if (!downloadResponse.ok) {
+        throw new Error(
+          `Failed to download file: ${downloadResponse.statusText}`,
+        );
+      }
+
+      const blob = await downloadResponse.blob();
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.href = url;
       a.download = file.name;
       document.body.appendChild(a);
       a.click();
+      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
       setRegistered(true);
-    } finally {
+      setDownloading(false);
+    } catch (err) {
+      console.error("[FileDownloadButton] Error:", err);
+      setError(err instanceof Error ? err.message : "Download failed");
       setDownloading(false);
     }
   }
