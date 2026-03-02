@@ -5,8 +5,10 @@ import { logger } from "../utils/logger.ts";
 import { expandHomeDir } from "../utils/os.ts";
 import process from "node:process";
 import { join } from "node:path";
-import { exists } from "../utils/fs.ts";
+import { exists, readTextFile } from "../utils/fs.ts";
 import { tmpdir } from "node:os";
+import { getSkillsStore } from "../skills/store.ts";
+import type { Skill } from "../../shared/types/skills.ts";
 
 // Upload directory - same as in files.ts
 const UPLOAD_DIR = join(tmpdir(), "claude-webui-uploads");
@@ -17,6 +19,84 @@ const UPLOAD_FILE_PATTERN = new RegExp(
   `${UPLOAD_DIR.replace(/\\/g, "/")}[^\\s\\n\\]"']*`,
   "g",
 );
+
+/**
+ * Collect content from all enabled skills
+ * Returns formatted skill instructions for the system prompt
+ */
+async function collectEnabledSkillsContent(
+  projectId?: string,
+): Promise<string> {
+  try {
+    const store = getSkillsStore();
+
+    // Ensure store is initialized
+    if (!store.isInitialized()) {
+      await store.initialize();
+    }
+
+    const appSkills = store.getAppSkills();
+    const projectSkills = projectId ? store.getProjectSkills(projectId) : [];
+
+    // Combine app and project skills, filter only enabled ones
+    const allSkills = [...appSkills, ...projectSkills].filter(
+      (skill) => skill.enabled,
+    );
+
+    if (allSkills.length === 0) {
+      return "";
+    }
+
+    // Read SKILL.md content for each enabled skill
+    const skillContents: string[] = [];
+
+    for (const skill of allSkills) {
+      try {
+        const skillMdPath = join(skill.path, "SKILL.md");
+        if (await exists(skillMdPath)) {
+          const content = await readTextFile(skillMdPath);
+          // Extract the content after the YAML frontmatter
+          const contentStart = content.indexOf("---");
+          if (contentStart !== -1) {
+            const secondSeparator = content.indexOf("---", contentStart + 3);
+            if (secondSeparator !== -1) {
+              skillContents.push(
+                `# Skill: ${skill.name}\n\n${content.substring(secondSeparator + 3).trim()}`,
+              );
+            } else {
+              skillContents.push(`# Skill: ${skill.name}\n\n${content.trim()}`);
+            }
+          } else {
+            skillContents.push(`# Skill: ${skill.name}\n\n${content.trim()}`);
+          }
+        }
+      } catch (error) {
+        logger.chat.warn("Failed to read skill content: {skillId}", {
+          skillId: skill.id,
+          error,
+        });
+      }
+    }
+
+    if (skillContents.length === 0) {
+      return "";
+    }
+
+    // Combine all skill contents into a single block
+    return `
+# Available Skills
+
+You have access to the following skills. Follow their instructions when relevant:
+
+${skillContents.join("\n\n---\n\n")}
+`;
+  } catch (error) {
+    logger.chat.error("Failed to collect enabled skills content: {error}", {
+      error,
+    });
+    return "";
+  }
+}
 
 /**
  * Copy uploaded files to working directory and update message with new paths
@@ -91,6 +171,8 @@ async function copyUploadedFilesToWorkingDir(
  * @param allowedTools - Optional array of allowed tool names
  * @param workingDirectory - Optional working directory for Claude execution
  * @param permissionMode - Optional permission mode for Claude execution
+ * @param additionalDirectories - Optional additional directories for file access
+ * @param skillsContent - Optional skills content to inject as system prompt
  * @returns AsyncGenerator yielding StreamResponse objects
  */
 async function* executeClaudeCommand(
@@ -103,6 +185,7 @@ async function* executeClaudeCommand(
   workingDirectory?: string,
   permissionMode?: PermissionMode,
   additionalDirectories?: string[],
+  skillsContent?: string,
 ): AsyncGenerator<StreamResponse> {
   let abortController: AbortController;
 
@@ -114,12 +197,17 @@ async function* executeClaudeCommand(
       processedMessage = message.substring(1);
     }
 
+    // Inject skills content as system prompt if provided
+    const finalPrompt = skillsContent
+      ? `${skillsContent}\n\n---\n\nUser message:\n${processedMessage}`
+      : processedMessage;
+
     // Create and store AbortController for this request
     abortController = new AbortController();
     requestAbortControllers.set(requestId, abortController);
 
     for await (const sdkMessage of query({
-      prompt: processedMessage,
+      prompt: finalPrompt,
       options: {
         abortController,
         executable: process.execPath as "bun" | "deno" | "node",
@@ -221,6 +309,16 @@ export async function handleChatRequest(
     UPLOAD_DIR,
   ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
 
+  // Collect enabled skills content to inject as system prompt
+  // For now, we only use app-level skills. Project-level skills could be added later.
+  const skillsContent = await collectEnabledSkillsContent(undefined);
+
+  if (skillsContent) {
+    logger.chat.info("Injected {count} skills into context", {
+      count: skillsContent.length,
+    });
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
@@ -234,6 +332,7 @@ export async function handleChatRequest(
           expandedWorkingDir,
           chatRequest.permissionMode,
           mergedAdditionalDirs,
+          skillsContent, // Inject skills content
         )) {
           const data = JSON.stringify(chunk) + "\n";
           controller.enqueue(new TextEncoder().encode(data));
