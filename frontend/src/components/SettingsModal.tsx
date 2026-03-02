@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { GeneralSettings } from "./settings/GeneralSettings";
 import { ApiSettings } from "./settings/ApiSettings";
+import { McpSettings } from "./settings/McpSettings";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type TabType = "general" | "api";
+type TabType = "general" | "api" | "mcp";
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>("general");
@@ -66,21 +67,33 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <nav className="flex px-6" aria-label="Settings tabs">
             <button
               onClick={() => setActiveTab("general")}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "general"
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "general"
                   ? "border-blue-600 text-blue-600 dark:text-blue-400"
                   : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600"
-                }`}
+              }`}
             >
               General
             </button>
             <button
               onClick={() => setActiveTab("api")}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "api"
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "api"
                   ? "border-blue-600 text-blue-600 dark:text-blue-400"
                   : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600"
-                }`}
+              }`}
             >
               API Configuration
+            </button>
+            <button
+              onClick={() => setActiveTab("mcp")}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "mcp"
+                  ? "border-blue-600 text-blue-600 dark:text-blue-400"
+                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600"
+              }`}
+            >
+              MCP Servers
             </button>
           </nav>
         </div>
@@ -90,6 +103,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <div className="p-6">
             {activeTab === "general" && <GeneralSettings />}
             {activeTab === "api" && <ApiSettings />}
+            {activeTab === "mcp" && <McpSettings />}
           </div>
         </div>
       </div>

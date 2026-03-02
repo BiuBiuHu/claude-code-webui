@@ -12,6 +12,42 @@ import type { CommandResult, Runtime } from "./types.ts";
 import type { MiddlewareHandler } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { getPlatform } from "../utils/os.ts";
+import { createServer, type Server } from "node:http";
+
+/**
+ * 检查端口是否可用
+ */
+async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once("error", () => {
+      resolve(false);
+    });
+    server.once("listening", () => {
+      server.close();
+      resolve(true);
+    });
+    server.listen(port);
+  });
+}
+
+/**
+ * 查找可用端口（从指定端口开始递增探测）
+ */
+async function findAvailablePort(
+  startPort: number,
+  maxAttempts = 100,
+): Promise<number> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = startPort + i;
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  throw new Error(
+    `No available port found after ${maxAttempts} attempts starting from ${startPort}`,
+  );
+}
 
 export class NodeRuntime implements Runtime {
   async findExecutable(name: string): Promise<string[]> {
@@ -105,11 +141,21 @@ export class NodeRuntime implements Runtime {
     });
   }
 
-  serve(
+  async serve(
     port: number,
     hostname: string,
     handler: (req: Request) => Response | Promise<Response>,
-  ): void {
+  ): Promise<void> {
+    // 查找可用端口
+    const availablePort = await findAvailablePort(port);
+
+    // 如果端口与请求的不同，打印提示
+    if (availablePort !== port) {
+      console.log(
+        `Port ${port} is in use, using port ${availablePort} instead.`,
+      );
+    }
+
     // Use Hono with Node.js server to handle Web API Request/Response
     const app = new Hono();
 
@@ -122,11 +168,11 @@ export class NodeRuntime implements Runtime {
     // Start the server using @hono/node-server
     serve({
       fetch: app.fetch,
-      port,
+      port: availablePort,
       hostname,
     });
 
-    console.log(`Listening on http://${hostname}:${port}/`);
+    console.log(`Listening on http://${hostname}:${availablePort}/`);
   }
 
   createStaticFileMiddleware(options: { root: string }): MiddlewareHandler {

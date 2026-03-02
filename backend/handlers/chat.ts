@@ -45,7 +45,7 @@ async function* executeClaudeCommand(
       prompt: processedMessage,
       options: {
         abortController,
-        executable: process.execPath,
+        executable: process.execPath as "bun" | "deno" | "node",
         executableArgs: [],
         pathToClaudeCodeExecutable: cliPath,
         ...(sessionId ? { resume: sessionId } : {}),

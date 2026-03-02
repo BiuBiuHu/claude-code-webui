@@ -76,6 +76,15 @@ export const logger = {
 
   // General application logging
   app: getLogger(["app"]),
+
+  // Skills module logging
+  skills: getLogger(["skills"]),
+
+  // Cowork module logging
+  cowork: getLogger(["cowork"]),
+
+  // MCP module logging
+  mcp: getLogger(["mcp"]),
 };
 
 /**

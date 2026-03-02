@@ -90,3 +90,12 @@ export interface SaveConfigRequest {
   baseUrl?: string;
   model?: string;
 }
+
+// Skills MCP 类型导出
+export * from "./types/skills.ts";
+
+// Cowork 类型导出
+export * from "./types/cowork.ts";
+
+// MCP 类型导出
+export * from "./types/mcp.ts";

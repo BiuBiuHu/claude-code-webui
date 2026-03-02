@@ -25,12 +25,12 @@ export interface Runtime {
   ): Promise<CommandResult>;
   findExecutable(name: string): Promise<string[]>;
 
-  // HTTP server (different implementations)
+  // HTTP server (different implementations, async for port detection)
   serve(
     port: number,
     hostname: string,
     handler: (req: Request) => Response | Promise<Response>,
-  ): void;
+  ): Promise<void>;
 
   // Static file serving (different middleware)
   createStaticFileMiddleware(options: { root: string }): MiddlewareHandler;

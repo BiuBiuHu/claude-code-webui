@@ -1,9 +1,18 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { StopIcon } from "@heroicons/react/24/solid";
 import { UI_CONSTANTS, KEYBOARD_SHORTCUTS } from "../../utils/constants";
 import { useEnterBehavior } from "../../hooks/useSettings";
 import { PermissionInputPanel } from "./PermissionInputPanel";
 import { PlanPermissionInputPanel } from "./PlanPermissionInputPanel";
+import { SlashCommandPalette } from "./SlashCommandPalette";
+import {
+  executeSlashCommand,
+  type SlashCommandHandlers,
+} from "../../utils/slashCommands";
+import {
+  isPotentialSlashCommand,
+  type SlashCommand,
+} from "../../../../shared/types/slashCommands";
 import type { PermissionMode } from "../../types";
 
 interface PermissionData {
@@ -50,6 +59,10 @@ interface ChatInputProps {
   showPermissions?: boolean;
   permissionData?: PermissionData;
   planPermissionData?: PlanPermissionData;
+  // Slash command handlers
+  onClearConversation?: () => void;
+  onSaveConversation?: () => void;
+  onExportConversation?: () => void;
 }
 
 export function ChatInput({
@@ -64,10 +77,57 @@ export function ChatInput({
   showPermissions = false,
   permissionData,
   planPermissionData,
+  onClearConversation,
+  onSaveConversation,
+  onExportConversation,
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const { enterBehavior } = useEnterBehavior();
+
+  // Slash command state
+  const [showSlashPalette, setShowSlashPalette] = useState(false);
+
+  // Check if input is a potential slash command
+  const isSlashCommand = isPotentialSlashCommand(input);
+
+  // Show/hide slash palette based on input
+  useEffect(() => {
+    if (input === "/" && !showSlashPalette) {
+      setShowSlashPalette(true);
+    } else if (!input.startsWith("/") && showSlashPalette) {
+      setShowSlashPalette(false);
+    }
+  }, [input, showSlashPalette]);
+
+  const slashCommandHandlers: SlashCommandHandlers = {
+    setPlanMode: useCallback(() => {
+      onPermissionModeChange("plan");
+      setShowSlashPalette(false);
+      onInputChange("");
+    }, [onPermissionModeChange, onInputChange]),
+    setNormalMode: useCallback(() => {
+      onPermissionModeChange("default");
+      setShowSlashPalette(false);
+      onInputChange("");
+    }, [onPermissionModeChange, onInputChange]),
+    clearConversation: useCallback(() => {
+      onClearConversation?.();
+      setShowSlashPalette(false);
+      onInputChange("");
+    }, [onClearConversation, onInputChange]),
+    saveConversation: useCallback(() => {
+      onSaveConversation?.();
+      setShowSlashPalette(false);
+      onInputChange("");
+    }, [onSaveConversation, onInputChange]),
+    exportConversation: useCallback(() => {
+      onExportConversation?.();
+      setShowSlashPalette(false);
+      onInputChange("");
+    }, [onExportConversation, onInputChange]),
+  };
 
   // Focus input when not loading and not in permission mode
   useEffect(() => {
@@ -92,7 +152,30 @@ export function ChatInput({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Handle slash command execution
+    if (isSlashCommand) {
+      const result = executeSlashCommand(input, slashCommandHandlers);
+      if (result.handled) {
+        setShowSlashPalette(false);
+        onInputChange("");
+        return;
+      }
+    }
+
     onSubmit();
+  };
+
+  const handleSlashCommandSelect = (command: SlashCommand) => {
+    setShowSlashPalette(false);
+    // Insert the command into input (can be further edited)
+    onInputChange(`/${command.name} `);
+    // Focus back on input
+    inputRef.current?.focus();
+  };
+
+  const closeSlashPalette = () => {
+    setShowSlashPalette(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -107,6 +190,19 @@ export function ChatInput({
       e.preventDefault();
       onPermissionModeChange(getNextPermissionMode(permissionMode));
       return;
+    }
+
+    // Handle slash palette keyboard shortcuts
+    if (showSlashPalette) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowSlashPalette(false);
+        return;
+      }
+      // Arrow keys and Enter are handled by the palette component
+      if (["ArrowUp", "ArrowDown", "Enter"].includes(e.key)) {
+        return; // Let the palette handle it
+      }
     }
 
     if (e.key === KEYBOARD_SHORTCUTS.SUBMIT && !isComposing) {
@@ -209,7 +305,7 @@ export function ChatInput({
   }
 
   return (
-    <div className="flex-shrink-0">
+    <div className="flex-shrink-0" ref={containerRef}>
       <form onSubmit={handleSubmit} className="relative">
         <textarea
           ref={inputRef}
@@ -219,7 +315,9 @@ export function ChatInput({
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           placeholder={
-            isLoading && currentRequestId ? "Processing..." : "Type message..."
+            isLoading && currentRequestId
+              ? "Processing..."
+              : "Type message... (Type / for commands)"
           }
           rows={1}
           className={`w-full px-4 py-3 pr-20 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm shadow-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 resize-none overflow-hidden min-h-[48px] max-h-[${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px]`}
@@ -244,6 +342,15 @@ export function ChatInput({
             {isLoading ? "..." : permissionMode === "plan" ? "Plan" : "Send"}
           </button>
         </div>
+
+        {/* Slash Command Palette */}
+        {showSlashPalette && (
+          <SlashCommandPalette
+            input={input}
+            onSelect={handleSlashCommandSelect}
+            onClose={closeSlashPalette}
+          />
+        )}
       </form>
 
       {/* Permission mode status bar */}

@@ -79,12 +79,43 @@ export class DenoRuntime implements Runtime {
     };
   }
 
-  serve(
+  async serve(
     port: number,
     hostname: string,
     handler: (req: Request) => Response | Promise<Response>,
-  ): void {
-    Deno.serve({ port, hostname }, handler);
+  ): Promise<void> {
+    let currentPort = port;
+    let maxAttempts = 100;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        // 尝试在当前端口启动服务器
+        // 使用 listener.abort() 可以关闭服务器
+        const listener = Deno.listen({ port: currentPort, hostname });
+        listener.close(); // 关闭测试监听器，端口现在可用
+
+        // 如果端口与请求的不同，打印提示
+        if (currentPort !== port) {
+          console.log(
+            `Port ${port} is in use, using port ${currentPort} instead.`,
+          );
+        }
+
+        Deno.serve({ port: currentPort, hostname }, handler);
+        return;
+      } catch (error) {
+        // 端口被占用，尝试下一个端口
+        if (error instanceof Deno.errors.AddrInUse) {
+          currentPort++;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error(
+      `No available port found after ${maxAttempts} attempts starting from ${port}`,
+    );
   }
 
   createStaticFileMiddleware(options: { root: string }): MiddlewareHandler {

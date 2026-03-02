@@ -1,12 +1,17 @@
 import { useEffect, useCallback, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeftIcon } from "@heroicons/react/24/outline";
+import {
+  ChevronLeftIcon,
+  SparklesIcon,
+  QueueListIcon,
+} from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
   ProjectInfo,
   PermissionMode,
 } from "../types";
+import type { CoworkTask } from "../../../shared/types/cowork";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
 import { useChatState } from "../hooks/chat/useChatState";
 import { usePermissions } from "../hooks/chat/usePermissions";
@@ -15,11 +20,15 @@ import { useAbortController } from "../hooks/chat/useAbortController";
 import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
 import { useSidebarState } from "../hooks/useSidebarState";
 import { useConversationList } from "../hooks/useConversationList";
+import { useSkillsPanelState } from "../hooks/useSkillsPanelState";
+import { useCoworkPanelState } from "../hooks/useCoworkPanelState";
 import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import { ConversationSidebar } from "./ConversationSidebar";
+import { SkillsPanel } from "./skills";
+import { CoworkPanel } from "./cowork";
 import { getChatUrl, getProjectsUrl } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
@@ -32,6 +41,18 @@ export function ChatPage() {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { isCollapsed, toggleSidebar } = useSidebarState();
+
+  // Skills and Cowork panel state
+  const { isOpen: isSkillsPanelOpen, toggleOpen: toggleSkillsPanel } =
+    useSkillsPanelState();
+  const { isOpen: isCoworkPanelOpen, toggleOpen: toggleCoworkPanel } =
+    useCoworkPanelState();
+
+  // Handle task click in Cowork panel
+  const handleTaskClick = useCallback((task: CoworkTask) => {
+    // TODO: Show task details in a modal or navigate to task view
+    console.log("Task clicked:", task);
+  }, []);
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -354,23 +375,70 @@ export function ChatPage() {
     closePlanModeRequest();
   }, [updatePermissionMode, closePlanModeRequest]);
 
+  // Slash command handlers
+  const handleClearConversation = useCallback(() => {
+    // Clear messages and reset session
+    setHasShownInitMessage(false);
+    setHasReceivedInit(false);
+    setCurrentAssistantMessage(null);
+    // Clear all messages by resetting to initial state
+    messages.length = 0; // Clear array
+    setInput("");
+  }, [
+    setHasShownInitMessage,
+    setHasReceivedInit,
+    setCurrentAssistantMessage,
+    messages,
+    setInput,
+  ]);
+
+  const handleSaveConversation = useCallback(() => {
+    // TODO: Implement save conversation functionality
+    console.log("Save conversation - sessionId:", currentSessionId);
+    // This could trigger a backend API call to save/mark the conversation
+  }, [currentSessionId]);
+
+  const handleExportConversation = useCallback(() => {
+    // Export conversation as JSON or markdown
+    if (messages.length === 0) return;
+
+    const exportData = {
+      sessionId: currentSessionId,
+      workingDirectory,
+      timestamp: new Date().toISOString(),
+      messages: messages,
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `conversation-${currentSessionId || "new"}-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [messages, currentSessionId, workingDirectory]);
+
   // Create permission data for inline permission interface
   const permissionData = permissionRequest
     ? {
-      patterns: permissionRequest.patterns,
-      onAllow: handlePermissionAllow,
-      onAllowPermanent: handlePermissionAllowPermanent,
-      onDeny: handlePermissionDeny,
-    }
+        patterns: permissionRequest.patterns,
+        onAllow: handlePermissionAllow,
+        onAllowPermanent: handlePermissionAllowPermanent,
+        onDeny: handlePermissionDeny,
+      }
     : undefined;
 
   // Create plan permission data for plan mode interface
   const planPermissionData = planModeRequest
     ? {
-      onAcceptWithEdits: handlePlanAcceptWithEdits,
-      onAcceptDefault: handlePlanAcceptDefault,
-      onKeepPlanning: handlePlanKeepPlanning,
-    }
+        onAcceptWithEdits: handlePlanAcceptWithEdits,
+        onAcceptDefault: handlePlanAcceptDefault,
+        onKeepPlanning: handlePlanKeepPlanning,
+      }
     : undefined;
 
   const handleNewChat = useCallback(() => {
@@ -427,16 +495,18 @@ export function ChatPage() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
+      {/* Skills Panel */}
+      <SkillsPanel isOpen={isSkillsPanelOpen} />
+
       {/* Conversation Sidebar */}
       <ConversationSidebar
         conversations={conversations}
-        currentSessionId={currentSessionId}
+        currentSessionId={currentSessionId ?? undefined}
         workingDirectory={workingDirectory || undefined}
         isCollapsed={isCollapsed}
         onToggleCollapse={toggleSidebar}
         onNewChat={handleNewChat}
       />
-
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen">
@@ -501,6 +571,50 @@ export function ChatPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {/* Skills Panel Toggle */}
+              <button
+                onClick={toggleSkillsPanel}
+                className={`p-2 rounded-lg transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md ${
+                  isSkillsPanelOpen
+                    ? "bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"
+                    : "bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800"
+                }`}
+                aria-label={isSkillsPanelOpen ? "Hide Skills" : "Show Skills"}
+                title={
+                  isSkillsPanelOpen ? "Hide Skills Panel" : "Show Skills Panel"
+                }
+              >
+                <SparklesIcon
+                  className={`w-5 h-5 ${
+                    isSkillsPanelOpen
+                      ? "text-blue-600 dark:text-blue-400"
+                      : "text-slate-600 dark:text-slate-400"
+                  }`}
+                />
+              </button>
+
+              {/* Cowork Panel Toggle */}
+              <button
+                onClick={toggleCoworkPanel}
+                className={`p-2 rounded-lg transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md ${
+                  isCoworkPanelOpen
+                    ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800"
+                    : "bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800"
+                }`}
+                aria-label={isCoworkPanelOpen ? "Hide Cowork" : "Show Cowork"}
+                title={
+                  isCoworkPanelOpen ? "Hide Cowork Panel" : "Show Cowork Panel"
+                }
+              >
+                <QueueListIcon
+                  className={`w-5 h-5 ${
+                    isCoworkPanelOpen
+                      ? "text-purple-600 dark:text-purple-400"
+                      : "text-slate-600 dark:text-slate-400"
+                  }`}
+                />
+              </button>
+
               <SettingsButton onClick={handleSettingsClick} />
             </div>
           </div>
@@ -567,14 +681,27 @@ export function ChatPage() {
                 showPermissions={isPermissionMode}
                 permissionData={permissionData}
                 planPermissionData={planPermissionData}
+                onClearConversation={handleClearConversation}
+                onSaveConversation={handleSaveConversation}
+                onExportConversation={handleExportConversation}
               />
             </>
           )}
 
           {/* Settings Modal */}
-          <SettingsModal isOpen={isSettingsOpen} onClose={handleSettingsClose} />
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={handleSettingsClose}
+          />
         </div>
       </div>
+
+      {/* Cowork Panel */}
+      <CoworkPanel
+        isOpen={isCoworkPanelOpen}
+        sessionId={currentSessionId || undefined}
+        onTaskClick={handleTaskClick}
+      />
     </div>
   );
 }
