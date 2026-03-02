@@ -1,13 +1,12 @@
 import { useEffect, useCallback, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeftIcon, QueueListIcon } from "@heroicons/react/24/outline";
+import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
   ProjectInfo,
   PermissionMode,
 } from "../types";
-import type { CoworkTask } from "../../../shared/types/cowork";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
 import { useChatState } from "../hooks/chat/useChatState";
 import { usePermissions } from "../hooks/chat/usePermissions";
@@ -16,13 +15,11 @@ import { useAbortController } from "../hooks/chat/useAbortController";
 import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
 import { useSidebarState } from "../hooks/useSidebarState";
 import { useConversationList } from "../hooks/useConversationList";
-import { useCoworkPanelState } from "../hooks/useCoworkPanelState";
 import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import { ConversationSidebar } from "./ConversationSidebar";
-import { CoworkPanel } from "./cowork";
 import { getChatUrl, getProjectsUrl } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
@@ -35,16 +32,6 @@ export function ChatPage() {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { isCollapsed, toggleSidebar } = useSidebarState();
-
-  // Cowork panel state
-  const { isOpen: isCoworkPanelOpen, toggleOpen: toggleCoworkPanel } =
-    useCoworkPanelState();
-
-  // Handle task click in Cowork panel
-  const handleTaskClick = useCallback((task: CoworkTask) => {
-    // TODO: Show task details in a modal or navigate to task view
-    console.log("Task clicked:", task);
-  }, []);
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -603,26 +590,12 @@ export function ChatPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {/* Cowork Panel Toggle */}
               <button
-                onClick={toggleCoworkPanel}
-                className={`p-2 rounded-lg transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md ${
-                  isCoworkPanelOpen
-                    ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800"
-                    : "bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800"
-                }`}
-                aria-label={isCoworkPanelOpen ? "Hide Cowork" : "Show Cowork"}
-                title={
-                  isCoworkPanelOpen ? "Hide Cowork Panel" : "Show Cowork Panel"
-                }
+                onClick={handleBackToProjects}
+                className="px-3 py-2 rounded-lg bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-300 transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md"
+                aria-label="Back to folder selection"
               >
-                <QueueListIcon
-                  className={`w-5 h-5 ${
-                    isCoworkPanelOpen
-                      ? "text-purple-600 dark:text-purple-400"
-                      : "text-slate-600 dark:text-slate-400"
-                  }`}
-                />
+                返回文件夹选择
               </button>
 
               <SettingsButton onClick={handleSettingsClick} />
@@ -718,12 +691,6 @@ export function ChatPage() {
         </div>
       </div>
 
-      {/* Cowork Panel */}
-      <CoworkPanel
-        isOpen={isCoworkPanelOpen}
-        sessionId={currentSessionId || undefined}
-        onTaskClick={handleTaskClick}
-      />
     </div>
   );
 }

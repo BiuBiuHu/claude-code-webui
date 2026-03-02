@@ -21,30 +21,69 @@ export const API_CONFIG = {
   },
 } as const;
 
+const TAURI_DEFAULT_API_BASE = "http://127.0.0.1:8080";
+
+function isTauriRuntime(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const protocol = window.location.protocol;
+  const isHttpLike = protocol === "http:" || protocol === "https:";
+
+  return (
+    "__TAURI_INTERNALS__" in window ||
+    protocol === "tauri:" ||
+    !isHttpLike
+  );
+}
+
+function getApiBase(): string {
+  const envBase = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (envBase) {
+    return envBase.replace(/\/$/, "");
+  }
+
+  return isTauriRuntime() ? TAURI_DEFAULT_API_BASE : "";
+}
+
+function withApiBase(endpoint: string): string {
+  if (/^https?:\/\//.test(endpoint)) {
+    return endpoint;
+  }
+
+  const base = getApiBase();
+  if (!base) {
+    return endpoint;
+  }
+
+  return endpoint.startsWith("/") ? `${base}${endpoint}` : `${base}/${endpoint}`;
+}
+
 // Helper function to get full API URL
 export const getApiUrl = (endpoint: string) => {
-  return endpoint;
+  return withApiBase(endpoint);
 };
 
 // Helper function to get abort URL
 export const getAbortUrl = (requestId: string) => {
-  return `${API_CONFIG.ENDPOINTS.ABORT}/${requestId}`;
+  return withApiBase(`${API_CONFIG.ENDPOINTS.ABORT}/${requestId}`);
 };
 
 // Helper function to get chat URL
 export const getChatUrl = () => {
-  return API_CONFIG.ENDPOINTS.CHAT;
+  return withApiBase(API_CONFIG.ENDPOINTS.CHAT);
 };
 
 // Helper function to get projects URL
 export const getProjectsUrl = () => {
-  return API_CONFIG.ENDPOINTS.PROJECTS;
+  return withApiBase(API_CONFIG.ENDPOINTS.PROJECTS);
 };
 
 // Helper function to get histories URL
 export const getHistoriesUrl = (projectPath: string) => {
   const encodedPath = encodeURIComponent(projectPath);
-  return `${API_CONFIG.ENDPOINTS.HISTORIES}/${encodedPath}/histories`;
+  return withApiBase(`${API_CONFIG.ENDPOINTS.HISTORIES}/${encodedPath}/histories`);
 };
 
 // Helper function to get conversation URL
@@ -52,7 +91,9 @@ export const getConversationUrl = (
   encodedProjectName: string,
   sessionId: string,
 ) => {
-  return `${API_CONFIG.ENDPOINTS.CONVERSATIONS}/${encodedProjectName}/histories/${sessionId}`;
+  return withApiBase(
+    `${API_CONFIG.ENDPOINTS.CONVERSATIONS}/${encodedProjectName}/histories/${sessionId}`,
+  );
 };
 
 // Skills API helpers
@@ -64,7 +105,9 @@ export const getSkillsUrl = (params?: {
   if (params?.scope) searchParams.set("scope", params.scope);
   if (params?.projectId) searchParams.set("projectId", params.projectId);
   const queryString = searchParams.toString();
-  return `${API_CONFIG.ENDPOINTS.SKILLS}${queryString ? `?${queryString}` : ""}`;
+  return withApiBase(
+    `${API_CONFIG.ENDPOINTS.SKILLS}${queryString ? `?${queryString}` : ""}`,
+  );
 };
 
 export const getSkillDetailUrl = (
@@ -75,23 +118,25 @@ export const getSkillDetailUrl = (
   if (params?.scope) searchParams.set("scope", params.scope);
   if (params?.projectId) searchParams.set("projectId", params.projectId);
   const queryString = searchParams.toString();
-  return `${API_CONFIG.ENDPOINTS.SKILL_DETAIL}/${encodeURIComponent(skillId)}${queryString ? `?${queryString}` : ""}`;
+  return withApiBase(
+    `${API_CONFIG.ENDPOINTS.SKILL_DETAIL}/${encodeURIComponent(skillId)}${queryString ? `?${queryString}` : ""}`,
+  );
 };
 
 export const getInstallSkillUrl = () => {
-  return API_CONFIG.ENDPOINTS.INSTALL_SKILL;
+  return withApiBase(API_CONFIG.ENDPOINTS.INSTALL_SKILL);
 };
 
 export const getDeleteSkillUrl = () => {
-  return API_CONFIG.ENDPOINTS.DELETE_SKILL;
+  return withApiBase(API_CONFIG.ENDPOINTS.DELETE_SKILL);
 };
 
 export const getToggleSkillUrl = () => {
-  return API_CONFIG.ENDPOINTS.TOGGLE_SKILL;
+  return withApiBase(API_CONFIG.ENDPOINTS.TOGGLE_SKILL);
 };
 
 export const getScanSkillsUrl = () => {
-  return API_CONFIG.ENDPOINTS.SCAN_SKILLS;
+  return withApiBase(API_CONFIG.ENDPOINTS.SCAN_SKILLS);
 };
 
 // Cowork API helpers
@@ -103,23 +148,31 @@ export const getCoworkTasksUrl = (params?: {
   if (params?.status) searchParams.set("status", params.status);
   if (params?.limit) searchParams.set("limit", params.limit.toString());
   const queryString = searchParams.toString();
-  return `${API_CONFIG.ENDPOINTS.COWORK_TASKS}${queryString ? `?${queryString}` : ""}`;
+  return withApiBase(
+    `${API_CONFIG.ENDPOINTS.COWORK_TASKS}${queryString ? `?${queryString}` : ""}`,
+  );
 };
 
 export const getCoworkTaskUrl = (taskId: string) => {
-  return `${API_CONFIG.ENDPOINTS.COWORK_TASKS}/${encodeURIComponent(taskId)}`;
+  return withApiBase(
+    `${API_CONFIG.ENDPOINTS.COWORK_TASKS}/${encodeURIComponent(taskId)}`,
+  );
 };
 
 export const getCoworkCreateUrl = () => {
-  return API_CONFIG.ENDPOINTS.COWORK_CREATE;
+  return withApiBase(API_CONFIG.ENDPOINTS.COWORK_CREATE);
 };
 
 export const getCoworkCancelUrl = (taskId: string) => {
-  return `${API_CONFIG.ENDPOINTS.COWORK_CANCEL}/${encodeURIComponent(taskId)}`;
+  return withApiBase(
+    `${API_CONFIG.ENDPOINTS.COWORK_CANCEL}/${encodeURIComponent(taskId)}`,
+  );
 };
 
 export const getCoworkSSEUrl = (sessionId?: string) => {
-  return sessionId
-    ? `${API_CONFIG.ENDPOINTS.COWORK_SSE}?sessionId=${encodeURIComponent(sessionId)}`
-    : API_CONFIG.ENDPOINTS.COWORK_SSE;
+  return withApiBase(
+    sessionId
+      ? `${API_CONFIG.ENDPOINTS.COWORK_SSE}?sessionId=${encodeURIComponent(sessionId)}`
+      : API_CONFIG.ENDPOINTS.COWORK_SSE,
+  );
 };

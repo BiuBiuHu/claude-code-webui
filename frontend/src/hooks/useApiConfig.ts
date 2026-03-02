@@ -5,8 +5,7 @@ import type {
     SaveConfigRequest,
     ConfigTestResponse,
 } from "../../../shared/types";
-
-const API_BASE = "";
+import { getApiUrl } from "../config/api";
 
 export function useApiConfig() {
     const [config, setConfig] = useState<UserConfigResponse | null>(null);
@@ -26,7 +25,7 @@ export function useApiConfig() {
     const loadConfig = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${API_BASE}/api/config`);
+            const response = await fetch(getApiUrl("/api/config"));
             if (!response.ok) {
                 throw new Error("Failed to load configuration");
             }
@@ -42,7 +41,7 @@ export function useApiConfig() {
 
     const loadSystemConfig = async () => {
         try {
-            const response = await fetch(`${API_BASE}/api/config/system`);
+            const response = await fetch(getApiUrl("/api/config/system"));
             if (!response.ok) {
                 throw new Error("Failed to load system configuration");
             }
@@ -56,7 +55,7 @@ export function useApiConfig() {
     const saveConfig = async (newConfig: SaveConfigRequest) => {
         try {
             setLoading(true);
-            const response = await fetch(`${API_BASE}/api/config`, {
+            const response = await fetch(getApiUrl("/api/config"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(newConfig),
@@ -87,7 +86,7 @@ export function useApiConfig() {
     ): Promise<ConfigTestResponse> => {
         try {
             setTesting(true);
-            const response = await fetch(`${API_BASE}/api/config/test`, {
+            const response = await fetch(getApiUrl("/api/config/test"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ apiKey, baseUrl, model }),

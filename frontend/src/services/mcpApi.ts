@@ -9,8 +9,7 @@ import type {
   McpTestResponse,
   McpServersResponse,
 } from "../../../shared/types/mcp";
-
-const API_BASE = "/api/mcp";
+import { getApiUrl } from "../config/api";
 
 class McpApiError extends Error {
   statusCode?: number;
@@ -28,7 +27,7 @@ export { McpApiError };
  * 获取 MCP 服务器列表
  */
 export async function getMcpServers(): Promise<McpServerInfo[]> {
-  const response = await fetch(`${API_BASE}/servers`);
+  const response = await fetch(getApiUrl("/api/mcp/servers"));
 
   if (!response.ok) {
     throw new McpApiError("Failed to fetch MCP servers", response.status);
@@ -44,7 +43,7 @@ export async function getMcpServers(): Promise<McpServerInfo[]> {
 export async function addMcpServer(
   server: McpServerRequest,
 ): Promise<{ server: McpServerInfo }> {
-  const response = await fetch(`${API_BASE}/servers`, {
+  const response = await fetch(getApiUrl("/api/mcp/servers"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(server),
@@ -65,7 +64,7 @@ export async function addMcpServer(
  * 删除 MCP 服务器
  */
 export async function deleteMcpServer(serverId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/servers/${serverId}`, {
+  const response = await fetch(getApiUrl(`/api/mcp/servers/${serverId}`), {
     method: "DELETE",
   });
 
@@ -80,7 +79,7 @@ export async function deleteMcpServer(serverId: string): Promise<void> {
 export async function testMcpServer(
   request: McpTestRequest,
 ): Promise<McpTestResponse> {
-  const response = await fetch(`${API_BASE}/servers/test`, {
+  const response = await fetch(getApiUrl("/api/mcp/servers/test"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -99,7 +98,7 @@ export async function testMcpServer(
 export async function getMcpServerTools(
   serverId: string,
 ): Promise<{ serverId: string; tools: unknown[]; message?: string }> {
-  const response = await fetch(`${API_BASE}/servers/${serverId}/tools`);
+  const response = await fetch(getApiUrl(`/api/mcp/servers/${serverId}/tools`));
 
   if (!response.ok) {
     throw new McpApiError("Failed to fetch MCP server tools", response.status);
