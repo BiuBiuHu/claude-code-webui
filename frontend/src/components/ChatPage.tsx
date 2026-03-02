@@ -1,10 +1,6 @@
 import { useEffect, useCallback, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import {
-  ChevronLeftIcon,
-  SparklesIcon,
-  QueueListIcon,
-} from "@heroicons/react/24/outline";
+import { ChevronLeftIcon, QueueListIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
@@ -20,14 +16,12 @@ import { useAbortController } from "../hooks/chat/useAbortController";
 import { useAutoHistoryLoader } from "../hooks/useHistoryLoader";
 import { useSidebarState } from "../hooks/useSidebarState";
 import { useConversationList } from "../hooks/useConversationList";
-import { useSkillsPanelState } from "../hooks/useSkillsPanelState";
 import { useCoworkPanelState } from "../hooks/useCoworkPanelState";
 import { SettingsButton } from "./SettingsButton";
 import { SettingsModal } from "./SettingsModal";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import { ConversationSidebar } from "./ConversationSidebar";
-import { SkillsPanel } from "./skills";
 import { CoworkPanel } from "./cowork";
 import { getChatUrl, getProjectsUrl } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
@@ -42,9 +36,7 @@ export function ChatPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { isCollapsed, toggleSidebar } = useSidebarState();
 
-  // Skills and Cowork panel state
-  const { isOpen: isSkillsPanelOpen, toggleOpen: toggleSkillsPanel } =
-    useSkillsPanelState();
+  // Cowork panel state
   const { isOpen: isCoworkPanelOpen, toggleOpen: toggleCoworkPanel } =
     useCoworkPanelState();
 
@@ -495,9 +487,6 @@ export function ChatPage() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-      {/* Skills Panel */}
-      <SkillsPanel isOpen={isSkillsPanelOpen} />
-
       {/* Conversation Sidebar */}
       <ConversationSidebar
         conversations={conversations}
@@ -571,28 +560,6 @@ export function ChatPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {/* Skills Panel Toggle */}
-              <button
-                onClick={toggleSkillsPanel}
-                className={`p-2 rounded-lg transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md ${
-                  isSkillsPanelOpen
-                    ? "bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"
-                    : "bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800"
-                }`}
-                aria-label={isSkillsPanelOpen ? "Hide Skills" : "Show Skills"}
-                title={
-                  isSkillsPanelOpen ? "Hide Skills Panel" : "Show Skills Panel"
-                }
-              >
-                <SparklesIcon
-                  className={`w-5 h-5 ${
-                    isSkillsPanelOpen
-                      ? "text-blue-600 dark:text-blue-400"
-                      : "text-slate-600 dark:text-slate-400"
-                  }`}
-                />
-              </button>
-
               {/* Cowork Panel Toggle */}
               <button
                 onClick={toggleCoworkPanel}
