@@ -16,6 +16,7 @@ interface DetectedFile {
 
 interface FileDownloadButtonProps {
   content: string;
+  workingDirectory?: string;
 }
 
 // Regular expressions to detect file paths and file creation messages
@@ -40,7 +41,10 @@ const DIR_PATTERN =
 // Common upload directory pattern
 const UPLOAD_DIR_PATTERN = /\/claude-webui-uploads\//;
 
-export function FileDownloadButton({ content }: FileDownloadButtonProps) {
+export function FileDownloadButton({
+  content,
+  workingDirectory,
+}: FileDownloadButtonProps) {
   const [files, setFiles] = useState<DetectedFile[]>([]);
 
   useEffect(() => {
@@ -101,7 +105,11 @@ export function FileDownloadButton({ content }: FileDownloadButtonProps) {
   return (
     <div className="flex flex-wrap gap-2 my-2">
       {files.map((file, index) => (
-        <FileChip key={`${file.path}-${index}`} file={file} />
+        <FileChip
+          key={`${file.path}-${index}`}
+          file={file}
+          workingDirectory={workingDirectory}
+        />
       ))}
     </div>
   );
@@ -109,9 +117,10 @@ export function FileDownloadButton({ content }: FileDownloadButtonProps) {
 
 interface FileChipProps {
   file: DetectedFile;
+  workingDirectory?: string;
 }
 
-function FileChip({ file }: FileChipProps) {
+function FileChip({ file, workingDirectory }: FileChipProps) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [registered, setRegistered] = useState(false);
@@ -136,6 +145,7 @@ function FileChip({ file }: FileChipProps) {
       const requestData = {
         path: file.path,
         name: file.name,
+        ...(workingDirectory && { workingDirectory }),
       };
 
       // Register the file and get a download URL
@@ -146,7 +156,10 @@ function FileChip({ file }: FileChipProps) {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to register file: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || `Failed to register file: ${response.statusText}`,
+        );
       }
 
       const result = await response.json();
@@ -197,7 +210,7 @@ function FileChip({ file }: FileChipProps) {
 
   return (
     <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg group">
-      <span className="text-sm">
+      <span className="text-sm" title={`路径: ${file.path}`}>
         {getFileIcon()} {file.name}
       </span>
       <button
@@ -212,8 +225,11 @@ function FileChip({ file }: FileChipProps) {
         />
       </button>
       {error && (
-        <span className="text-xs text-red-600 dark:text-red-400" title={error}>
-          ⚠️
+        <span
+          className="text-xs text-red-600 dark:text-red-400 max-w-[200px] truncate"
+          title={error}
+        >
+          ⚠️ {error}
         </span>
       )}
     </div>

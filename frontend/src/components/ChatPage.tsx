@@ -676,7 +676,11 @@ export function ChatPage() {
           ) : (
             <>
               {/* Chat Messages */}
-              <ChatMessages messages={messages} isLoading={isLoading} />
+              <ChatMessages
+                messages={messages}
+                isLoading={isLoading}
+                workingDirectory={workingDirectory}
+              />
 
               {/* Input */}
               <ChatInput

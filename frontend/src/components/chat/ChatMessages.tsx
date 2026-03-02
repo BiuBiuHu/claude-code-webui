@@ -24,9 +24,14 @@ import {
 interface ChatMessagesProps {
   messages: AllMessage[];
   isLoading: boolean;
+  workingDirectory?: string;
 }
 
-export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
+export function ChatMessages({
+  messages,
+  isLoading,
+  workingDirectory,
+}: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -71,7 +76,13 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
     } else if (isTodoMessage(message)) {
       return <TodoMessageComponent key={key} message={message} />;
     } else if (isChatMessage(message)) {
-      return <ChatMessageComponent key={key} message={message} />;
+      return (
+        <ChatMessageComponent
+          key={key}
+          message={message}
+          workingDirectory={workingDirectory}
+        />
+      );
     }
     return null;
   };

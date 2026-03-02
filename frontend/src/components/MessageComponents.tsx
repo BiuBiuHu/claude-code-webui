@@ -39,9 +39,13 @@ function isHooksMessage(
 
 interface ChatMessageComponentProps {
   message: ChatMessage;
+  workingDirectory?: string;
 }
 
-export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
+export function ChatMessageComponent({
+  message,
+  workingDirectory,
+}: ChatMessageComponentProps) {
   const isUser = message.role === "user";
   const colorScheme = isUser
     ? "bg-blue-600 text-white"
@@ -71,7 +75,12 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
         {message.content}
       </pre>
       {/* Show file download buttons for assistant messages */}
-      {!isUser && <FileDownloadButton content={message.content} />}
+      {!isUser && (
+        <FileDownloadButton
+          content={message.content}
+          workingDirectory={workingDirectory}
+        />
+      )}
     </MessageContainer>
   );
 }

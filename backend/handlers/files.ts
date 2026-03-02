@@ -403,9 +403,10 @@ export async function handleRegisterFile(c: Context): Promise<Response> {
       path: string;
       name?: string;
       mimeType?: string;
+      workingDirectory?: string;
     }>();
 
-    const { path: filePath, name, mimeType } = body;
+    const { path: filePath, name, mimeType, workingDirectory } = body;
 
     if (!filePath) {
       const response: UploadResponse = {
@@ -415,46 +416,115 @@ export async function handleRegisterFile(c: Context): Promise<Response> {
       return c.json(response, 400);
     }
 
-    // Resolve relative paths to absolute paths
-    // For relative paths like ./xxx.pdf, resolve them from current working directory
-    let resolvedPath = filePath;
-    if (filePath.startsWith("./") || filePath.startsWith("../")) {
-      const { resolve } = await import("node:path");
-      const { cwd } = await import("node:process");
-      resolvedPath = resolve(cwd(), filePath);
-      logger.api.debug("Resolved relative path {relative} to {absolute}", {
-        relative: filePath,
-        absolute: resolvedPath,
+    const { resolve, basename } = await import("node:path");
+    const { cwd } = await import("node:process");
+    const { exists } = await import("../utils/fs.ts");
+
+    // Extract filename from path
+    const fileName = name || basename(filePath);
+
+    // Build a list of paths to search
+    const searchPaths: Array<{ path: string; description: string }> = [];
+
+    // 1. Try the exact path first (if it's an absolute path)
+    if (filePath.startsWith("/")) {
+      searchPaths.push({
+        path: filePath,
+        description: "original absolute path",
       });
     }
 
-    // Validate the file exists
-    const { exists } = await import("../utils/fs.ts");
-    const fileExists = await exists(resolvedPath);
+    // 2. Try relative to current working directory (backend dir)
+    if (filePath.startsWith("./") || filePath.startsWith("../")) {
+      searchPaths.push({
+        path: resolve(cwd(), filePath),
+        description: "backend cwd",
+      });
+    } else if (!filePath.startsWith("/")) {
+      // Relative path without prefix
+      searchPaths.push({
+        path: resolve(cwd(), filePath),
+        description: "backend cwd",
+      });
+    }
 
-    if (!fileExists) {
+    // 3. Try working directory if provided
+    if (workingDirectory) {
+      searchPaths.push({
+        path: resolve(workingDirectory, basename(filePath)),
+        description: "working directory",
+      });
+      // Also try with full relative path
+      if (filePath.includes("./") || filePath.includes("../")) {
+        searchPaths.push({
+          path: resolve(workingDirectory, filePath),
+          description: "working directory (full)",
+        });
+      }
+    }
+
+    // 4. Try upload directory
+    searchPaths.push({
+      path: resolve(UPLOAD_DIR, basename(filePath)),
+      description: "upload directory",
+    });
+
+    // Remove duplicates
+    const uniquePaths = Array.from(
+      new Map(searchPaths.map((p) => [p.path, p])).values(),
+    );
+
+    logger.api.debug("Searching for file {fileName} in {count} locations", {
+      fileName,
+      count: uniquePaths.length,
+    });
+
+    // Try each path
+    let foundPath: string | null = null;
+    for (const { path: searchPath, description } of uniquePaths) {
+      logger.api.debug("  Trying {description}: {path}", {
+        description,
+        path: searchPath,
+      });
+      if (await exists(searchPath)) {
+        foundPath = searchPath;
+        logger.api.info("Found file at {description}: {path}", {
+          description,
+          path: searchPath,
+        });
+        break;
+      }
+    }
+
+    if (!foundPath) {
+      logger.api.error(
+        "File not found: {fileName}. Searched in {count} locations: {locations}",
+        {
+          fileName,
+          count: uniquePaths.length,
+          locations: uniquePaths
+            .map((p) => `${p.description}: ${p.path}`)
+            .join(", "),
+        },
+      );
       const response: UploadResponse = {
         success: false,
-        error: "File does not exist",
+        error: `File not found: ${fileName}. Searched in ${uniquePaths.length} locations.`,
       };
       return c.json(response, 404);
     }
 
     // Get file stats
     const { stat } = await import("node:fs/promises");
-    const stats = await stat(resolvedPath);
+    const stats = await stat(foundPath);
 
     // Generate file ID
     const fileId = randomUUID();
 
-    // Extract name from path if not provided
-    const fileName =
-      name || resolvedPath.substring(resolvedPath.lastIndexOf("/") + 1);
-
-    // Register file with absolute path
+    // Register file with found path
     fileRegistry.set(fileId, {
       name: fileName,
-      path: resolvedPath,
+      path: foundPath,
       size: stats.size,
       mimeType: mimeType || "application/octet-stream",
       uploadedAt: Date.now(),
@@ -462,7 +532,7 @@ export async function handleRegisterFile(c: Context): Promise<Response> {
 
     logger.api.info("File registered: {fileName} -> {filePath}", {
       fileName,
-      filePath: resolvedPath,
+      filePath: foundPath,
     });
 
     const response: UploadResponse = {
@@ -470,7 +540,7 @@ export async function handleRegisterFile(c: Context): Promise<Response> {
       file: {
         id: fileId,
         name: fileName,
-        path: resolvedPath,
+        path: foundPath,
         size: stats.size,
         mimeType: mimeType || "application/octet-stream",
       },
@@ -488,6 +558,8 @@ export async function handleRegisterFile(c: Context): Promise<Response> {
     return c.json(response, 500);
   }
 }
+
+/**
 
 /**
  * Handle GET /api/files/:fileId/download
