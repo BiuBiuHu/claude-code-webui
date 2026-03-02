@@ -79,6 +79,11 @@ export function FileDownloadButton({ content }: FileDownloadButtonProps) {
           if (dirPath && !trimmedPath.startsWith("/")) {
             fullPath = `${dirPath}/${trimmedPath}`;
           }
+          // If path is just a filename (no directory separator), add ./ prefix
+          // so backend can resolve it from current working directory
+          if (!fullPath.includes("/") && !fullPath.startsWith(".")) {
+            fullPath = `./${fullPath}`;
+          }
 
           detected.push({
             path: fullPath,
