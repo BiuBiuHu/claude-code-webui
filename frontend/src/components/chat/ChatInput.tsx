@@ -5,6 +5,7 @@ import { useEnterBehavior } from "../../hooks/useSettings";
 import { PermissionInputPanel } from "./PermissionInputPanel";
 import { PlanPermissionInputPanel } from "./PlanPermissionInputPanel";
 import { SlashCommandPalette } from "./SlashCommandPalette";
+import { FileUploadButton, FileAttachments } from "./FileUploadButton";
 import {
   executeSlashCommand,
   type SlashCommandHandlers,
@@ -14,6 +15,14 @@ import {
   type SlashCommand,
 } from "../../../../shared/types/slashCommands";
 import type { PermissionMode } from "../../types";
+
+interface AttachedFile {
+  id: string;
+  name: string;
+  path: string;
+  size: number;
+  mimeType: string;
+}
 
 interface PermissionData {
   patterns: string[];
@@ -51,7 +60,7 @@ interface ChatInputProps {
   isLoading: boolean;
   currentRequestId: string | null;
   onInputChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (attachedFiles?: AttachedFile[]) => void;
   onAbort: () => void;
   // Permission mode props
   permissionMode: PermissionMode;
@@ -85,6 +94,9 @@ export function ChatInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const { enterBehavior } = useEnterBehavior();
+
+  // File attachment state
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
 
   // Slash command state
   const [showSlashPalette, setShowSlashPalette] = useState(false);
@@ -163,8 +175,21 @@ export function ChatInput({
       }
     }
 
-    onSubmit();
+    // Pass attached files to submit handler
+    onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined);
+    // Clear attached files after submit
+    setAttachedFiles([]);
   };
+
+  // Handle file attachment
+  const handleFileAttached = useCallback((file: AttachedFile) => {
+    setAttachedFiles((prev) => [...prev, file]);
+  }, []);
+
+  // Handle file removal
+  const handleFileRemoved = useCallback((fileId: string) => {
+    setAttachedFiles((prev) => prev.filter((f) => f.id !== fileId));
+  }, []);
 
   const handleSlashCommandSelect = (command: SlashCommand) => {
     setShowSlashPalette(false);
@@ -220,7 +245,8 @@ export function ChatInput({
     // Newline mode: Enter adds newline, Shift+Enter sends
     if (e.shiftKey) {
       e.preventDefault();
-      onSubmit();
+      // Pass attachedFiles when submitting via keyboard
+      onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined);
     }
     // Enter is handled naturally by textarea (adds newline)
   };
@@ -231,7 +257,8 @@ export function ChatInput({
     // Send mode: Enter sends, Shift+Enter adds newline
     if (!e.shiftKey) {
       e.preventDefault();
-      onSubmit();
+      // Pass attachedFiles when submitting via keyboard
+      onSubmit(attachedFiles.length > 0 ? attachedFiles : undefined);
     }
     // Shift+Enter is handled naturally by textarea (adds newline)
   };
@@ -317,13 +344,22 @@ export function ChatInput({
           placeholder={
             isLoading && currentRequestId
               ? "Processing..."
-              : "Type message... (Type / for commands)"
+              : attachedFiles.length > 0
+                ? "添加消息描述... (Type / for commands)"
+                : "Type message... (Type / for commands)"
           }
           rows={1}
-          className={`w-full px-4 py-3 pr-20 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm shadow-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 resize-none overflow-hidden min-h-[48px] max-h-[${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px]`}
+          className={`w-full px-4 py-3 pr-28 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm shadow-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 resize-none overflow-hidden min-h-[48px] max-h-[${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px]`}
           disabled={isLoading}
         />
         <div className="absolute right-2 bottom-3 flex gap-2">
+          {/* File Upload Button */}
+          <FileUploadButton
+            onFileAttached={handleFileAttached}
+            onFileRemoved={handleFileRemoved}
+            attachedFiles={attachedFiles}
+            disabled={isLoading}
+          />
           {isLoading && currentRequestId && (
             <button
               type="button"
@@ -352,6 +388,11 @@ export function ChatInput({
           />
         )}
       </form>
+
+      {/* File Attachments */}
+      {attachedFiles.length > 0 && (
+        <FileAttachments files={attachedFiles} onRemove={handleFileRemoved} />
+      )}
 
       {/* Permission mode status bar */}
       <button

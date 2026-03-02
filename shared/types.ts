@@ -11,6 +11,7 @@ export interface ChatRequest {
   allowedTools?: string[];
   workingDirectory?: string;
   permissionMode?: "default" | "plan" | "acceptEdits";
+  additionalDirectories?: string[];
 }
 
 export interface AbortRequest {

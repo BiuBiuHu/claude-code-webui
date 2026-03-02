@@ -49,6 +49,14 @@ import {
   handleCleanupTasks,
   handleQueueStatus,
 } from "./handlers/cowork.ts";
+import {
+  handleFileUpload,
+  handleListFiles,
+  handleGetFile,
+  handleDownloadFile,
+  handleRegisterFile,
+  handleDeleteFile,
+} from "./handlers/files.ts";
 import { logger } from "./utils/logger.ts";
 import { readBinaryFile } from "./utils/fs.ts";
 
@@ -135,6 +143,14 @@ export function createApp(
   app.get("/api/cowork/statistics", (c) => handleGetStatistics(c));
   app.delete("/api/cowork/tasks", (c) => handleCleanupTasks(c));
   app.get("/api/cowork/queue-status", (c) => handleQueueStatus(c));
+
+  // File upload endpoints
+  app.post("/api/files/upload", (c) => handleFileUpload(c));
+  app.post("/api/files/register", (c) => handleRegisterFile(c));
+  app.get("/api/files", (c) => handleListFiles(c));
+  app.get("/api/files/:fileId", (c) => handleGetFile(c));
+  app.get("/api/files/:fileId/download", (c) => handleDownloadFile(c));
+  app.delete("/api/files/:fileId", (c) => handleDeleteFile(c));
 
   // Static file serving with SPA fallback
   // Serve static assets (CSS, JS, images, etc.)

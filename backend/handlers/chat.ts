@@ -4,6 +4,82 @@ import type { ChatRequest, StreamResponse } from "../../shared/types.ts";
 import { logger } from "../utils/logger.ts";
 import { expandHomeDir } from "../utils/os.ts";
 import process from "node:process";
+import { join } from "node:path";
+import { exists } from "../utils/fs.ts";
+import { tmpdir } from "node:os";
+
+// Upload directory - same as in files.ts
+const UPLOAD_DIR = join(tmpdir(), "claude-webui-uploads");
+
+// Pattern to detect uploaded file paths in messages
+// Dynamically matches the temp directory path (works on both Linux /tmp and macOS /var/folders/.../T)
+const UPLOAD_FILE_PATTERN = new RegExp(
+  `${UPLOAD_DIR.replace(/\\/g, "/")}[^\\s\\n\\]"']*`,
+  "g",
+);
+
+/**
+ * Copy uploaded files to working directory and update message with new paths
+ * This ensures Claude can access the files from its working directory
+ */
+async function copyUploadedFilesToWorkingDir(
+  message: string,
+  workingDir: string | undefined,
+): Promise<{ message: string; copiedFiles: string[] }> {
+  if (!workingDir) {
+    logger.chat.debug("No working directory, skipping file copy");
+    return { message, copiedFiles: [] };
+  }
+
+  const uploadedFiles = message.match(UPLOAD_FILE_PATTERN);
+  logger.chat.info("Looking for upload file paths in message, found: {count}", {
+    count: uploadedFiles?.length || 0,
+    files: uploadedFiles || [],
+  });
+
+  if (!uploadedFiles) {
+    return { message, copiedFiles: [] };
+  }
+
+  const copiedFiles: string[] = [];
+  let updatedMessage = message;
+
+  const { copyFile, mkdir } = await import("node:fs/promises");
+
+  for (const uploadedPath of uploadedFiles) {
+    try {
+      // Check if uploaded file exists
+      if (!(await exists(uploadedPath))) {
+        logger.chat.warn("Uploaded file does not exist: {path}", {
+          path: uploadedPath,
+        });
+        continue;
+      }
+
+      // Extract filename from path
+      const fileName = uploadedPath.substring(
+        uploadedPath.lastIndexOf("/") + 1,
+      );
+      const targetPath = join(workingDir, fileName);
+
+      // Copy file to working directory
+      await copyFile(uploadedPath, targetPath);
+      copiedFiles.push(targetPath);
+
+      // Replace the path in the message
+      updatedMessage = updatedMessage.replace(uploadedPath, `./${fileName}`);
+
+      logger.chat.info("Copied uploaded file from {src} to {dest}", {
+        src: uploadedPath,
+        dest: targetPath,
+      });
+    } catch (error) {
+      logger.chat.error("Failed to copy uploaded file: {error}", { error });
+    }
+  }
+
+  return { message: updatedMessage, copiedFiles };
+}
 
 /**
  * Executes a Claude command and yields streaming responses
@@ -26,6 +102,7 @@ async function* executeClaudeCommand(
   allowedTools?: string[],
   workingDirectory?: string,
   permissionMode?: PermissionMode,
+  additionalDirectories?: string[],
 ): AsyncGenerator<StreamResponse> {
   let abortController: AbortController;
 
@@ -52,6 +129,9 @@ async function* executeClaudeCommand(
         ...(allowedTools ? { allowedTools } : {}),
         ...(workingDirectory ? { cwd: workingDirectory } : {}),
         ...(permissionMode ? { permissionMode } : {}),
+        ...(additionalDirectories && additionalDirectories.length > 0
+          ? { additionalDirectories }
+          : {}),
       },
     })) {
       // Debug logging of raw SDK messages with detailed content
@@ -102,17 +182,50 @@ export async function handleChatRequest(
     "Received chat request {*}",
     chatRequest as unknown as Record<string, unknown>,
   );
+  logger.chat.info("Received message: {message}", {
+    message: chatRequest.message.substring(0, 200),
+  });
 
   // Expand ~ in working directory path
   const expandedWorkingDir = chatRequest.workingDirectory
     ? expandHomeDir(chatRequest.workingDirectory)
     : undefined;
 
+  logger.chat.info("Working directory: {dir}", {
+    dir: expandedWorkingDir || "none",
+  });
+
+  // Copy uploaded files to working directory and update message paths
+  const { message: processedMessage, copiedFiles } =
+    await copyUploadedFilesToWorkingDir(
+      chatRequest.message,
+      expandedWorkingDir,
+    );
+
+  logger.chat.info("Processed message: {message}, copied files: {files}", {
+    message: processedMessage.substring(0, 200),
+    files: copiedFiles.length,
+  });
+
+  if (copiedFiles.length > 0) {
+    logger.chat.info("Copied {count} uploaded file(s) to working directory", {
+      count: copiedFiles.length,
+      files: copiedFiles,
+    });
+  }
+
+  // Merge additionalDirectories with UPLOAD_DIR
+  // This ensures Claude can access uploaded files even if not copied to working dir
+  const mergedAdditionalDirs = [
+    ...(chatRequest.additionalDirectories || []),
+    UPLOAD_DIR,
+  ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
         for await (const chunk of executeClaudeCommand(
-          chatRequest.message,
+          processedMessage,
           chatRequest.requestId,
           requestAbortControllers,
           cliPath, // Use detected CLI path from validateClaudeCli
@@ -120,6 +233,7 @@ export async function handleChatRequest(
           chatRequest.allowedTools,
           expandedWorkingDir,
           chatRequest.permissionMode,
+          mergedAdditionalDirs,
         )) {
           const data = JSON.stringify(chunk) + "\n";
           controller.enqueue(new TextEncoder().encode(data));

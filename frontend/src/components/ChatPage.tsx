@@ -162,9 +162,42 @@ export function ChatPage() {
       tools?: string[],
       hideUserMessage = false,
       overridePermissionMode?: PermissionMode,
+      attachedFiles?: Array<{ path: string; name: string }>,
     ) => {
-      const content = messageContent || input.trim();
-      if (!content || isLoading) return;
+      let content = messageContent || input.trim();
+      if (!content && !attachedFiles) return;
+      if (isLoading) return;
+
+      // If files are attached, prepend their paths to the message
+      // Be explicit about file types and skills to trigger the correct behavior
+      if (attachedFiles && attachedFiles.length > 0) {
+        const getFileTypeIntro = (name: string, path: string) => {
+          const ext = name.toLowerCase().substring(name.lastIndexOf("."));
+          if (ext === ".pdf") return `PDF file at ${path}`;
+          if (ext === ".md") return `Markdown file at ${path}`;
+          if (ext.match(/\.(jpg|jpeg|png|gif|tiff?)$/))
+            return `Image file at ${path}`;
+          return `File at ${path}`;
+        };
+
+        // Build the file intro with explicit skill usage instructions
+        let fileIntro: string;
+        if (attachedFiles.length === 1) {
+          const file = attachedFiles[0];
+          const ext = file.name
+            .toLowerCase()
+            .substring(file.name.lastIndexOf("."));
+          if (ext === ".pdf") {
+            fileIntro = `Please use the pdf skill to read the ${getFileTypeIntro(file.name, file.path)}. `;
+          } else {
+            fileIntro = `I've uploaded a ${getFileTypeIntro(file.name, file.path)}. `;
+          }
+        } else {
+          fileIntro = `I've uploaded the following files for processing:\n${attachedFiles.map((f) => `  - ${getFileTypeIntro(f.name, f.path)}`).join("\n")}\n\n`;
+        }
+
+        content = fileIntro + (content || "Please process these files.");
+      }
 
       const requestId = generateRequestId();
 
@@ -183,6 +216,13 @@ export function ChatPage() {
       startRequest();
 
       try {
+        // If files are attached, include the upload directory in additionalDirectories
+        // so Claude can access the uploaded files
+        const additionalDirs =
+          attachedFiles && attachedFiles.length > 0
+            ? ["/tmp/claude-webui-uploads"]
+            : undefined;
+
         const response = await fetch(getChatUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -193,6 +233,9 @@ export function ChatPage() {
             allowedTools: tools || allowedTools,
             ...(workingDirectory ? { workingDirectory } : {}),
             permissionMode: overridePermissionMode || permissionMode,
+            ...(additionalDirs
+              ? { additionalDirectories: additionalDirs }
+              : {}),
           } as ChatRequest),
         });
 
@@ -520,7 +563,7 @@ export function ChatPage() {
                       className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1"
                       aria-label="Back to project selection"
                     >
-                      Claude Code Web UI
+                      Ai-CoWorks
                     </button>
                     {sessionId && (
                       <>
@@ -641,7 +684,15 @@ export function ChatPage() {
                 isLoading={isLoading}
                 currentRequestId={currentRequestId}
                 onInputChange={setInput}
-                onSubmit={() => sendMessage()}
+                onSubmit={(attachedFiles) =>
+                  sendMessage(
+                    undefined,
+                    undefined,
+                    false,
+                    undefined,
+                    attachedFiles,
+                  )
+                }
                 onAbort={handleAbort}
                 permissionMode={permissionMode}
                 onPermissionModeChange={setPermissionMode}

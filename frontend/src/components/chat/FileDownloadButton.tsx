@@ -1,0 +1,185 @@
+/**
+ * FileDownloadButton Component
+ *
+ * Detects file paths in text and displays download buttons.
+ * Supports files from the file registry and local file paths.
+ */
+
+import { useEffect, useState } from "react";
+import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { getApiUrl } from "../../config/api";
+
+interface DetectedFile {
+  path: string;
+  name: string;
+}
+
+interface FileDownloadButtonProps {
+  content: string;
+}
+
+// Regular expressions to detect file paths and file creation messages
+const FILE_PATTERNS = [
+  // Created/saved file paths - matches "created xxx.pdf", "saved to ./xxx.pdf", etc.
+  /(?:created?|saved?|wrote?|generated?|output(?:ted)?|wrote)\s+(?:to\s+)?["`']?(.*?\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))["`'?]/gi,
+  // File paths in quotes or backticks
+  /["'`]([^"'\`]+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))["'`]/g,
+  // Relative paths like ./xxx.pdf or ../xxx.pdf
+  /(?:[\s(])(\.\.?\/*[^\s\])"']+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))/g,
+  // Absolute paths
+  /(?:[\s(])(\/[^\s\])"']+\.(?:pdf|txt|md|docx?|xlsx?|csv|json|xml|html?|png|jpe?g|gif|tiff?|bmp))/g,
+];
+
+// Common upload directory pattern
+const UPLOAD_DIR_PATTERN = /\/claude-webui-uploads\//;
+
+export function FileDownloadButton({ content }: FileDownloadButtonProps) {
+  const [files, setFiles] = useState<DetectedFile[]>([]);
+
+  useEffect(() => {
+    detectFiles(content);
+  }, [content]);
+
+  function detectFiles(text: string) {
+    const detected: DetectedFile[] = [];
+    const seen = new Set<string>();
+
+    for (const pattern of FILE_PATTERNS) {
+      let match;
+      // Reset regex state
+      pattern.lastIndex = 0;
+      while ((match = pattern.exec(text)) !== null) {
+        const filePath = match[1] || match[0];
+        const trimmedPath = filePath.trim();
+
+        if (trimmedPath && !seen.has(trimmedPath)) {
+          seen.add(trimmedPath);
+
+          // Extract filename from path
+          const name = trimmedPath.substring(trimmedPath.lastIndexOf("/") + 1);
+
+          detected.push({
+            path: trimmedPath,
+            name,
+          });
+        }
+      }
+    }
+
+    setFiles(detected);
+  }
+
+  if (files.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 my-2">
+      {files.map((file, index) => (
+        <FileChip key={`${file.path}-${index}`} file={file} />
+      ))}
+    </div>
+  );
+}
+
+interface FileChipProps {
+  file: DetectedFile;
+}
+
+function FileChip({ file }: FileChipProps) {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [registered, setRegistered] = useState(false);
+
+  const isUploadFile = UPLOAD_DIR_PATTERN.test(file.path);
+
+  async function handleDownload() {
+    setDownloading(true);
+    setError(null);
+
+    try {
+      if (isUploadFile) {
+        // File is in upload directory, try to download directly via backend
+        // First, we need to register the file if it was created by Claude
+        await registerAndDownload();
+      } else {
+        // File is in working directory or elsewhere
+        // We need to register it first, then download
+        await registerAndDownload();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download failed");
+      setDownloading(false);
+    }
+  }
+
+  async function registerAndDownload() {
+    try {
+      // Register the file and get a download URL
+      const response = await fetch(getApiUrl("/api/files/register"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: file.path,
+          name: file.name,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to register file: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      if (!result.success || !result.file) {
+        throw new Error(result.error || "Failed to register file");
+      }
+
+      const fileId = result.file.id;
+
+      // Now download the file
+      const downloadUrl = getApiUrl(`/api/files/${fileId}/download`);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      setRegistered(true);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  function getFileIcon() {
+    const ext = file.name.toLowerCase().substring(file.name.lastIndexOf("."));
+    if (ext === ".pdf") return "📄";
+    if (ext === ".txt" || ext === ".md") return "📝";
+    if (ext.match(/\.(doc|docx)/)) return "📄";
+    if (ext.match(/\.(xls|xlsx)/)) return "📊";
+    if (ext.match(/\.(png|jpg|jpeg|gif)/)) return "🖼️";
+    return "📎";
+  }
+
+  return (
+    <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg group">
+      <span className="text-sm">
+        {getFileIcon()} {file.name}
+      </span>
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={downloading}
+        className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors disabled:opacity-50"
+        title={downloading ? "下载中..." : registered ? "再次下载" : "下载文件"}
+      >
+        <ArrowDownTrayIcon
+          className={`w-4 h-4 text-green-600 dark:text-green-400 ${downloading ? "animate-bounce" : ""}`}
+        />
+      </button>
+      {error && (
+        <span className="text-xs text-red-600 dark:text-red-400" title={error}>
+          ⚠️
+        </span>
+      )}
+    </div>
+  );
+}
