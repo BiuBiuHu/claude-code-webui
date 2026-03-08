@@ -30,7 +30,7 @@ lefthook run pre-commit
 - **Technology**: TypeScript + Hono framework with runtime abstraction
 - **Purpose**: Executes `claude` commands and streams JSON responses
 
-**Key Features**: Runtime abstraction, modular architecture, structured logging, universal Claude CLI path detection, session continuity, single binary distribution, comprehensive testing.
+**Key Features**: Runtime abstraction, modular architecture, structured logging, universal Claude CLI path detection, session continuity, single binary distribution, comprehensive testing, self-healing PDF translation with multi-method extraction.
 
 **API Endpoints**:
 
@@ -39,6 +39,9 @@ lefthook run pre-commit
 - `POST /api/abort/:requestId` - Abort ongoing requests
 - `GET /api/projects/:encodedProjectName/histories` - Conversation histories
 - `GET /api/projects/:encodedProjectName/histories/:sessionId` - Specific conversation history
+- `POST /api/pdf/translate` - PDF translation with multi-method extraction (`{ pdfFile, targetLanguage, options }`)
+- `GET /api/pdf/learning` - Retrieve learning metrics and model statistics
+- `POST /api/pdf/learning/reset` - Reset learning knowledge base (admin)
 
 ### Frontend (React)
 
@@ -110,6 +113,140 @@ Playwright MCP server integration for automated browser testing and demo verific
 
 **Available Tools**: Navigation, interaction, screenshots, content access, file operations, tab management, dialog handling
 
+## PDF Translation System
+
+Self-healing PDF translation system with multi-method extraction and automatic retry capabilities.
+
+### Architecture
+
+The system implements a resilient extraction and translation pipeline:
+
+**Extraction Methods** (parallel execution):
+
+1. **PyPDF2**: Direct text extraction from PDF streams
+2. **pdfjs-dist**: JavaScript-based PDF parsing with better Unicode support
+3. **OCR**: Tesseract OCR for scanned/image-based PDFs
+
+### Scoring and Ranking
+
+Each extraction method is scored based on:
+
+- **Character Count**: Higher scores for more extracted text
+- **CJK Character Detection**: Regex-based detection of Chinese/Japanese/Korean characters (`[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]`)
+- **Text Coherence**: Linguistic analysis measuring word frequency distributions and sentence structures
+
+**Ranking Formula**:
+
+```typescript
+score = characterCount * 0.3 + cjkRatio * 0.4 + coherenceScore * 0.3;
+```
+
+### Translation Pipeline
+
+1. **Extraction**: Run all 3 methods in parallel
+2. **Ranking**: Score and sort results by quality metrics
+3. **Selection**: Route highest-scoring extraction to translation
+4. **Validation**: Verify translation output quality
+5. **Retry**: If validation fails, use second-best extraction method
+6. **Fallback**: Continue until successful or all methods exhausted
+
+### Learning and Knowledge Base
+
+**Metrics Storage** (`backend/data/pdf-extraction-learning.json`):
+
+```json
+{
+  "attempts": [
+    {
+      "timestamp": "2026-03-08T12:00:00Z",
+      "pdfHash": "sha256:...",
+      "filename": "document.pdf",
+      "extractionResults": [
+        {
+          "method": "pypdf2",
+          "characterCount": 5420,
+          "cjkRatio": 0.85,
+          "coherenceScore": 0.92,
+          "selected": true,
+          "translationSuccess": true
+        },
+        {
+          "method": "pdfjs-dist",
+          "characterCount": 5100,
+          "cjkRatio": 0.83,
+          "coherenceScore": 0.88,
+          "selected": false
+        },
+        {
+          "method": "ocr",
+          "characterCount": 3200,
+          "cjkRatio": 0.45,
+          "coherenceScore": 0.65,
+          "selected": false
+        }
+      ],
+      "translationValidation": {
+        "passed": true,
+        "confidence": 0.94
+      }
+    }
+  ],
+  "modelMetrics": {
+    "pypdf2": { "successRate": 0.78, "avgScore": 0.85 },
+    "pdfjs-dist": { "successRate": 0.82, "avgScore": 0.87 },
+    "ocr": { "successRate": 0.65, "avgScore": 0.72 }
+  }
+}
+```
+
+### Validation Criteria
+
+Translation output is validated against:
+
+- **Length Consistency**: Output length within 50-200% of input
+- **Language Detection**: Target language detected in output
+- **Coherence Score**: Linguistic quality > 0.7 threshold
+- **CJK Preservation**: For CJK-heavy inputs, character preservation > 80%
+
+### Implementation Locations
+
+- **Extraction**: `backend/src/pdf/extractors/` (pypdf2.ts, pdfjs.ts, ocr.ts)
+- **Scoring**: `backend/src/pdf/scoring/rank.ts`
+- **Translation**: `backend/src/pdf/translate/route.ts`
+- **Learning**: `backend/src/pdf/learning/tracker.ts`
+- **Knowledge Base**: `backend/data/pdf-extraction-learning.json`
+
+### Usage
+
+Upload PDF via chat interface or API:
+
+```typescript
+POST /api/pdf/translate
+{
+  "pdfFile": "<base64 or multipart>",
+  "targetLanguage": "zh-CN",
+  "options": {
+    "preserveFormat": true,
+    "enableOcr": true
+  }
+}
+```
+
+**Response**:
+
+```json
+{
+  "success": true,
+  "extractionMethod": "pdfjs-dist",
+  "translatedText": "...",
+  "confidence": 0.94,
+  "attempts": 1,
+  "learningData": {
+    /* logged internally */
+  }
+}
+```
+
 ## Development
 
 ### Prerequisites
@@ -118,6 +255,10 @@ Playwright MCP server integration for automated browser testing and demo verific
 - Frontend: Node.js
 - Claude CLI tool installed
 - dotenvx: `npm install -g @dotenvx/dotenvx`
+- **PDF Translation Dependencies**:
+  - Python 3.10+ with PyPDF2 (`pip install pypdf2`)
+  - Tesseract OCR for system OCR support
+  - pdfjs-dist (`npm install pdfjs-dist`)
 
 ### Port Configuration
 
@@ -153,6 +294,14 @@ npm run dev
 │   ├── history/         # History processing utilities
 │   ├── middleware/      # Middleware modules
 │   ├── utils/           # Utility modules (logger.ts)
+│   ├── src/
+│   │   └── pdf/         # PDF translation system
+│   │       ├── extractors/  # Extraction methods (pypdf2.ts, pdfjs.ts, ocr.ts)
+│   │       ├── scoring/     # Extraction quality ranking (rank.ts)
+│   │       ├── translate/   # Translation routing (route.ts)
+│   │       └── learning/    # Learning tracker (tracker.ts)
+│   ├── data/            # Learning knowledge base
+│   │   └── pdf-extraction-learning.json
 │   └── scripts/         # Build and packaging scripts
 ├── frontend/            # React application
 │   ├── src/
